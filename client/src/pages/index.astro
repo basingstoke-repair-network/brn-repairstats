@@ -1,0 +1,340 @@
+---
+// Server-side code
+export const prerender = false;
+
+interface RepairItem {
+  number: number;
+  title: string;
+  status: string;
+  type: string;
+  owner: string;
+  repairer: string;
+}
+
+interface RepairStats {
+  total: number;
+  fixed: number;
+  failed: number;
+  waiting: number;
+  started: number;
+  byType: Record<string, number>;
+  byStatus: Record<string, number>;
+}
+
+const apiBaseUrl = import.meta.env.DEV ? 'http://localhost:3001/api' : '/api';
+
+let repairs: RepairItem[] = [];
+let stats: RepairStats | null = null;
+let error: string | null = null;
+
+try {
+  const [repairsResponse, statsResponse] = await Promise.all([
+    fetch(`${apiBaseUrl}/repairs`),
+    fetch(`${apiBaseUrl}/stats`)
+  ]);
+  
+  if (repairsResponse.ok && statsResponse.ok) {
+    repairs = await repairsResponse.json();
+    stats = await statsResponse.json();
+  } else {
+    error = 'Failed to fetch data';
+  }
+} catch (err) {
+  error = (err instanceof Error ? err.message : 'Failed to load data');
+}
+
+const currentMonth = new Date().toLocaleDateString('en-GB', { 
+  month: 'long', 
+  year: 'numeric' 
+});
+
+const lastUpdate = new Date().toLocaleTimeString('en-GB', { 
+  hour12: false, 
+  hour: '2-digit', 
+  minute: '2-digit' 
+});
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="Basingstoke Repair Network Repair Tracker" />
+    <title>BRN Repair Stats</title>
+    <style>
+      :root {
+        font-family: 'Fira Sans', Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+        line-height: 1.5;
+        font-weight: 400;
+        color-scheme: light;
+        color: rgba(0, 0, 0, 0.87);
+        background-color: #f8f8f8;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        -webkit-text-size-adjust: 100%;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100vh;
+        background: #f8f8f8;
+      }
+
+      .app-container {
+        min-height: 100vh;
+        background: #f8f8f8;
+        position: relative;
+      }
+
+      .header {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 16px;
+        font-weight: bold;
+        z-index: 10;
+      }
+
+      .stats-panel {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 12px;
+        font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 12px;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+        max-width: 300px;
+      }
+
+      .legend-item {
+        margin-right: 12px;
+        white-space: nowrap;
+      }
+
+      .grid-container {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        grid-template-rows: repeat(5, 1fr);
+        gap: 12px;
+        padding: 60px 16px 16px 16px;
+        min-height: calc(100vh - 60px);
+        align-items: center;
+        justify-items: center;
+        background: #f8f8f8;
+      }
+
+      .postit-card {
+        background: linear-gradient(180deg, var(--type-color-light) 0%, var(--type-color-dark) 100%);
+        border: var(--status-border);
+        border-radius: 4px;
+        padding: 12px;
+        width: 140px;
+        height: 120px;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+        font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        transform: rotate(var(--rotation));
+      }
+
+      .status-symbol {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        font-size: 20px;
+      }
+
+      .title {
+        font-size: 13px;
+        font-weight: bold;
+        line-height: 1.2;
+        margin-top: 6px;
+      }
+
+      .owner {
+        font-size: 11px;
+        margin-bottom: 2px;
+      }
+
+      .repairer {
+        position: absolute;
+        bottom: 8px;
+        left: 12px;
+        font-size: 11px;
+        font-style: italic;
+        font-weight: 500;
+        color: #4169E1;
+      }
+
+      .number {
+        position: absolute;
+        bottom: 8px;
+        right: 12px;
+        font-size: 13px;
+        font-weight: 900;
+        font-style: italic;
+        color: #4169E1;
+      }
+
+      .error-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 18px;
+        color: #cc0000;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-container">
+      {error ? (
+        <div class="error-container">
+          Error: {error}
+        </div>
+      ) : (
+        <>
+          <div class="header">
+            <strong>Repair Cafe tracker for {currentMonth}</strong>
+            <span> (last update: {lastUpdate})</span>
+          </div>
+          
+          {stats && (
+            <div class="stats-panel">
+              <span class="legend-item">⏳ Waiting for repairer</span>
+              <span class="legend-item">🔧 with repairer</span>
+              <span class="legend-item">✅ Fixed 😊</span>
+              <span class="legend-item">❌ Couldn't fix</span>
+            </div>
+          )}
+          
+          <div class="grid-container">
+            {repairs.map((repair: RepairItem, index: number) => {
+              // Rotation values from the original Typst file
+              const rotations = [-0.2, 0.5, 0.4, -0.6, 0, 0.6, -0.8, 0.4, 0, 0.2, 0.3, -0.1].map(r => r * 10);
+              const rotation = (rotations[index % rotations.length] * 2);
+              
+              // Get status symbol
+              const getStatusSymbol = (status: string) => {
+                const normalizedStatus = status.toLowerCase();
+                switch (normalizedStatus) {
+                  case 'fixed':
+                  case 'f':
+                  case 'y':
+                    return '😊';
+                  case 'failed':
+                  case 'x':
+                  case 'n':
+                    return '❌';
+                  case 'waiting':
+                  case 'w':
+                    return '⏳';
+                  case 'started':
+                  case 's':
+                    return '🔧';
+                  case 'home':
+                  case 'h':
+                    return '🏠';
+                  case 'return':
+                  case 'r':
+                    return '🔄';
+                  default:
+                    return '❓';
+                }
+              };
+              
+              // Get type color
+              const getTypeColor = (type: string) => {
+                switch (type.toLowerCase()) {
+                  case 'electrical':
+                    return { light: '#4169E1A0', dark: '#4169E180' };
+                  case 'mechanical':
+                    return { light: '#FFD700A0', dark: '#FFD70080' };
+                  case 'sewing':
+                    return { light: '#FFA500A0', dark: '#FFA50080' };
+                  case 'wood':
+                    return { light: '#32CD32A0', dark: '#32CD3280' };
+                  case 'computer':
+                    return { light: '#800000A0', dark: '#80000080' };
+                  default:
+                    return { light: '#C0C0C0A0', dark: '#C0C0C080' };
+                }
+              };
+              
+              // Get status border
+              const getStatusBorder = (status: string) => {
+                const normalizedStatus = status.toLowerCase();
+                switch (normalizedStatus) {
+                  case 'fixed':
+                  case 'f':
+                  case 'y':
+                    return '2px solid #32CD32';
+                  case 'failed':
+                  case 'x':
+                  case 'n':
+                    return '1px solid #FF0000';
+                  case 'waiting':
+                  case 'w':
+                    return '2px dashed #808080';
+                  case 'started':
+                  case 's':
+                    return '2px solid #000000';
+                  default:
+                    return '0px';
+                }
+              };
+              
+              const statusSymbol = getStatusSymbol(repair.status);
+              const typeColor = getTypeColor(repair.type);
+              const statusBorder = getStatusBorder(repair.status);
+              
+              return (
+                <div 
+                  class="postit-card"
+                  style={`
+                    --rotation: ${rotation}deg;
+                    --type-color-light: ${typeColor.light};
+                    --type-color-dark: ${typeColor.dark};
+                    --status-border: ${statusBorder};
+                  `}
+                >
+                  <div class="status-symbol">{statusSymbol}</div>
+                  <div>
+                    <div class="owner">{repair.owner}'s</div>
+                    <div class="title">{repair.title}</div>
+                  </div>
+                  <div class="repairer">{repair.repairer}</div>
+                  <div class="number">{repair.number}</div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+    
+    <script>
+      // Auto-refresh every 30 seconds
+      setInterval(() => {
+        window.location.reload();
+      }, 30000);
+    </script>
+  </body>
+</html>

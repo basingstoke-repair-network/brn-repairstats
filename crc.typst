@@ -1,0 +1,185 @@
+//-------------------------------------------------------------
+// Repair Cafe Repair Tracker
+// v1.0, 18.10.2024
+// The main import loop isn't working. So ...
+// To use: requires appending the pre-populated data from the
+// repairs.csv file onto this and adding a closing bracket.
+//-------------------------------------------------------------
+// TODO:
+// - previous months
+// - computer pink
+// - mech yellow
+// - electrical blue
+// - part needed
+// - 
+//-------------------------------------------------------------
+// #import "@preview/suiji:0.3.0": *
+#set page("presentation-16-9",
+margin: (top: 42pt, bottom: 16pt, left: 16pt, right: 16pt),)
+
+#let postittext(number, title, owner, repairer, symbol) = {
+  set text(font: "Fira Sans")
+  // Symbol
+  place(
+    top + right,
+    text(
+      size:20pt,
+    )[#symbol]
+  )
+  set par(leading: 0.5em)
+  set align(left)
+  place(
+    // top + left,
+    dx: 0pt, dy: 6pt,
+    text(size:13pt )[#owner's\
+  *#title*]
+  )
+  place(
+    bottom + left,
+    text(
+      size:11pt,
+      style: "italic",
+      weight: "medium",
+      fill: blue,
+    )[#repairer]
+  )
+  set align(right)
+  place(
+    bottom + right,
+    text(
+      size:13pt,
+      weight: "black",
+      style: "italic",
+      fill: blue
+    )[#number]
+  )
+}
+
+// #{
+//   let rng = gen-rng-f(42)
+//   let a=()
+//   (rng, a) = random(rng, size: 40)
+// }
+#let rots=(-0.2, 0.5, 0.4, -0.6, 0, 0.6, -0.8, 0.4, 0, 0.2, 0.3,-0.1) * 10 // = 120 rotation degrees
+
+#let postit(id, title, statusIn, kindIn, owner, repairer, number) = {
+  let status = statusIn.trim()
+  let kind = kindIn.trim()
+  let fillcol = silver // default
+  if kind=="electrical" {
+    fillcol = blue
+  } else if kind=="mechanical" {
+    fillcol = yellow
+  } else if kind=="sewing" {
+    fillcol = orange
+  } else if kind=="wood" {
+    fillcol = green
+  } else if kind=="computer" {
+    fillcol = maroon
+  }
+  let symbol = ""
+  let strokeval = 0pt
+  if (status=="fixed" or status=="F" or status=="Y") {
+    symbol = emoji.face.beam // "✅" // 👌
+    strokeval = 2pt + green
+  } else if (status=="failed" or status=="X" or status=="N") {
+    symbol = emoji.crossmark // "❌"
+    strokeval = 1pt + red
+  } else if (status=="waiting" or status=="W") {
+    symbol = emoji.hourglass.flow //"⏳"
+    strokeval = (thickness: 2pt, dash: "dashed")
+  } else if (status=="started" or status=="S") {
+    symbol = emoji.hammer.wrench // "🪛"
+    strokeval = 2pt
+  } else if (status=="home" or status=="H") {
+    symbol = emoji.house // "🏚️"
+  } else if (status=="return" or status=="R") {
+    symbol = emoji.playback.repeat
+  } else {
+    symbol = emoji.quest.white
+  }
+  let rotval = (rots.at(number)) * 2deg
+  rotate(rotval,
+  rect(
+    // fill: fillcol.lighten(50%), 
+    fill: gradient.linear(fillcol.lighten(65%), fillcol.lighten(50%), angle: 90deg),
+    stroke: strokeval,
+    inset: 8pt, 
+    height:100%, 
+    width:100%,
+    postittext(str(number), title, owner, repairer, symbol)
+  ))
+}
+
+#let csv-data = csv("repairs.csv", delimiter:",", row-type: array)
+// Sort by 'number' then 'status' fields, having removed header row
+// info from https://discord.com/channels/1054443721975922748/1297585347382874205
+#let sorted-csv-data = csv-data.slice(1).sorted(key: item => item.at(0)).rev().sorted(key: item => item.at(2)).rev()
+
+
+// Compute the cells for the grid here, which is easier to understand than having the for-loop in the grid def
+#let cells = ()
+#let c = 0
+#for (id, title, status, kind, owner, repairer) in sorted-csv-data {
+  cells.push([#postit(id, title, status, kind, owner, repairer, c)])
+  c += 1
+}
+
+// ------------------------------------------------------
+
+// This doesn't work for current time, grr. See https://github.com/typst/typst/issues/1988
+// #let time = datetime.today()
+// #let timeHM = time.display("[hour repr:12 padding:zero]:[minute padding:zero]")
+// Workaround is to use --input CLI
+#let timeHM = sys.inputs.time
+#let updated = ""
+#if (timeHM != "") { 
+  let updated = [ (last update: #timeHM)]
+}
+
+#place(
+  left,
+  dy: -30pt,
+  text(
+    size:16pt,
+    baseline:6pt,
+    font:"Fira Sans",
+    // style: "italic",
+    // weight: "semibold",)
+  [*Repair Cafe tracker for October 2024*] + updated
+  )
+)
+
+
+#place(
+  right,
+  dy: -30pt,
+  rect(
+    stroke: gray,
+    radius: 4pt,
+    inset: 6pt,
+    text(
+      size:12pt, font:"Fira Sans", 
+  )[#emoji.hourglass.flow Waiting for repairer, #emoji.hammer.wrench with repairer, ✅ Fixed #emoji.face.beam, #emoji.crossmark Couldn't fix]
+  )
+)
+
+#grid(
+  columns: (1fr, 1fr, 1fr,1fr,1fr,1fr,1fr),
+  rows: (1fr, 1fr, 1fr,1fr,1fr),
+  gutter: 12pt,
+  inset: 0pt,
+  align: center + horizon,
+  stroke: rgb("#F0F0F0"),
+  .. cells,
+
+  // Note: The following doesn't work:
+  // #(for (number, title, status,kind,owner,repairer) in results.slice(1) {
+  //   postit(int(number), title, status, kind, owner, repairer)
+  // },)
+  // The following does work, but the array syntax is too complex for me to follow
+  // And see the Discord debate at https://discord.com/channels/1054443721975922748/1297293848745349160/1297293848745349160
+  // ..for (number, title, status,kind,owner,repairer) in results.slice(1) {
+  //   (postit(int(number), title, status, kind, owner, repairer),)
+  // },
+)
